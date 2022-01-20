@@ -236,8 +236,11 @@ class _StreamManager {
       if (!error
           .toString()
           .contains('Connection closed before full header was received')) {
-        errorState.value = [error, stack];
-        image.value = null;
+        // we ignore errors when setting change notifiers that were already disposed 
+        try {
+          errorState.value = [error, stack];
+          image.value = null;
+        } catch(ex) {}
       }
     }
   }
