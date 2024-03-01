@@ -19,6 +19,7 @@ Parameter | Description
 --- | ---
 `isLive` | Whether or not the stream should be loaded continuously
 `timeout` | HTTP Timeout when fetching the MJPEG stream
+`frameTimeout` | If no frame is received for this duration, the stream will be reloaded. This should only be used together with `isLive` as there's no point in waiting for new frames in a stream that's not live.
 `width` | Force width
 `height` | Force height
 `error` | Error builder used when an error occurred

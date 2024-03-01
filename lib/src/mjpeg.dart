@@ -43,6 +43,7 @@ class Mjpeg extends HookWidget {
   final double? height;
   final bool isLive;
   final Duration timeout;
+  final Duration? frameTimeout;
   final WidgetBuilder? loading;
   final Client? httpClient;
   final Widget Function(BuildContext contet, dynamic error, dynamic stack)?
@@ -55,6 +56,7 @@ class Mjpeg extends HookWidget {
     this.isLive = false,
     this.width,
     this.timeout = const Duration(seconds: 5),
+    this.frameTimeout,
     this.height,
     this.fit,
     required this.stream,
@@ -78,6 +80,7 @@ class Mjpeg extends HookWidget {
               isLive && visible.visible,
               headers,
               timeout,
+              frameTimeout,
               httpClient ?? Client(),
               preprocessor ?? MjpegPreprocessor(),
               isMounted,
@@ -87,9 +90,10 @@ class Mjpeg extends HookWidget {
           isLive,
           visible.visible,
           timeout,
+          frameTimeout,
           httpClient,
           preprocessor,
-          isMounted
+          isMounted,
         ]);
     final key = useMemoized(() => UniqueKey(), [manager]);
 
@@ -153,26 +157,55 @@ class _StreamManager {
   final String stream;
   final bool isLive;
   final Duration _timeout;
+  final Duration? _frameTimeout;
   final Map<String, String> headers;
   final Client _httpClient;
   final MjpegPreprocessor _preprocessor;
   final bool Function() _mounted;
   // ignore: cancel_subscriptions
   StreamSubscription? _subscription;
+  Timer? _frameTimeoutTimer;
 
-  _StreamManager(this.stream, this.isLive, this.headers, this._timeout,
-      this._httpClient, this._preprocessor, this._mounted);
+  _StreamManager(
+    this.stream,
+    this.isLive,
+    this.headers,
+    this._timeout,
+    this._frameTimeout,
+    this._httpClient,
+    this._preprocessor,
+    this._mounted,
+  );
 
   Future<void> dispose() async {
     if (_subscription != null) {
       await _subscription!.cancel();
       _subscription = null;
     }
+    _frameTimeoutTimer?.cancel();
     _httpClient.close();
   }
 
+  void _resetFrameTimeoutTimer(
+    BuildContext context,
+    ValueNotifier<MemoryImage?> image,
+    ValueNotifier<List<dynamic>?> errorState,
+  ) {
+    if (_frameTimeout == null) return;
+
+    _frameTimeoutTimer?.cancel();
+    _frameTimeoutTimer = Timer(_frameTimeout!, () {
+      errorState.value = null;
+      updateStream(context, image, errorState);
+    });
+  }
+
   void _sendImage(BuildContext context, ValueNotifier<MemoryImage?> image,
-      ValueNotifier<dynamic> errorState, List<int> chunks) async {
+      ValueNotifier<List<dynamic>?> errorState, List<int> chunks) async {
+    // If frame timeout timer is active and we are expecting new frames,
+    // reset the timer on each frame received.
+    _resetFrameTimeoutTimer(context, image, errorState);
+
     // pass image through preprocessor sending to [Image] for rendering
     final List<int>? imageData = _preprocessor.process(chunks);
     if (imageData == null) return;
@@ -258,6 +291,8 @@ class _StreamManager {
           image.value = null;
         }
       }
+    } finally {
+      _resetFrameTimeoutTimer(context, image, errorState);
     }
   }
 }
